@@ -26,15 +26,7 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       external: (id) => {
-        const pkgs = [
-          "react",
-          "react-dom",
-          "three",
-          "@react-three/fiber",
-          "@react-three/drei",
-          "zustand",
-          "eventemitter3",
-        ];
+        const pkgs = ["react", "react-dom", "three", "@react-three/fiber"];
         return pkgs.some((p) => id === p || id.startsWith(p + "/"));
       },
       output: { exports: "named" },

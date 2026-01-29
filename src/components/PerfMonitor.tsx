@@ -319,7 +319,7 @@ const PerfThree: FC<PerfPropsGui> = ({
 
 // --- MAIN EXPORT ---
 
-export const PerformanceMonitor: FC<PerfPropsGui> = ({
+export const PerfMonitor: FC<PerfPropsGui> = ({
   showGraph = true,
   openByDefault = true,
   className,

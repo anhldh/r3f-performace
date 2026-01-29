@@ -2,17 +2,36 @@
     "name": "r3f-performance",
     "version": "0.1.3",
     "license": "MIT",
+    "description": "A performance monitor for React Three Fiber. Track FPS, draw calls, memory, and GPU usage.",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/anhldh/r3f-performance.git"
+    },
+    "homepage": "https://github.com/anhldh/r3f-performance#readme",
+    "bugs": {
+        "url": "https://github.com/anhldh/r3f-performance/issues"
+    },
     "keywords": [
         "react-three-fiber",
         "r3f",
+        "benchmark",
+        "performance-monitoring",
+        "monitor",
+        "analysis",
         "three",
         "threejs",
         "webgl",
+        "r3f-perf",
         "performance",
         "performance-monitor",
         "fps",
         "rendering",
-        "devtools"
+        "devtools",
+        "profiler",
+        "draw-calls",
+        "debug",
+        "memory",
+        "gpu"
     ],
     "private": false,
     "type": "module",
@@ -37,14 +56,15 @@
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "clean": "rimraf dist"
     },
+    "dependencies": {
+        "eventemitter3": "^5.0.4",
+        "zustand": "^5.0.10"
+    },
     "peerDependencies": {
-        "@react-three/drei": ">=9",
         "@react-three/fiber": ">=8",
-        "eventemitter3": ">=4",
         "react": ">=18",
         "react-dom": ">=18",
-        "three": ">=0.150",
-        "zustand": ">=4"
+        "three": ">=0.150"
     },
     "devDependencies": {
         "@types/node": "^25.0.10",

@@ -1,1 +1,1 @@
-export { PerformanceMonitor } from "./components/PerfMonitor";
+export { PerfMonitor } from "./components/PerfMonitor";
