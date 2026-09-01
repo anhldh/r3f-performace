@@ -1,4 +1,9 @@
 import { usePerf } from "../store";
+import type {
+  BackendApi,
+  BackendKind,
+  MemorySource,
+} from "../backends/types";
 
 /**
  * Toàn bộ số liệu hiệu năng đã throttle, sẵn sàng để render UI.
@@ -10,8 +15,12 @@ export type PerfData = {
   fps: number;
   cpu: number;
   gpu: number;
+  /** ms của compute pass. WebGPU only — WebGL luôn 0. */
+  gpuCompute: number;
   mem: number;
   vram: number;
+  /** `measured` (WebGPU, byte thật) hay `estimated` (WebGL, đoán từ scene). */
+  vramSource: MemorySource;
   gl: {
     calls: number;
     triangles: number;
@@ -20,11 +29,17 @@ export type PerfData = {
     geometries: number;
     textures: number;
     programs: number;
+    /** Compute dispatch trong frame. WebGL luôn 0. */
+    computeCalls: number;
   };
   infos: {
     version: string;
     renderer: string;
     vendor: string;
+    /** Class renderer: `webgl` = WebGLRenderer, `webgpu` = WebGPURenderer. */
+    backend: BackendKind;
+    /** GPU API thật bên dưới — WebGPURenderer có thể đang chạy backend `webgl2`. */
+    api: BackendApi;
   };
 };
 
@@ -33,18 +48,15 @@ const select = (s: import("../store").State): PerfData => ({
   fps: s.log?.fps ?? 0,
   cpu: s.log?.cpu ?? 0,
   gpu: s.log?.gpu ?? 0,
+  gpuCompute: s.log?.gpuCompute ?? 0,
   mem: s.log?.mem ?? 0,
   vram: s.estimatedMemory.vram,
-  gl: {
-    calls: s.gl?.info.render.calls ?? 0,
-    triangles: s.gl?.info.render.triangles ?? 0,
-    points: s.gl?.info.render.points ?? 0,
-    lines: s.gl?.info.render.lines ?? 0,
-    geometries: s.gl?.info.memory.geometries ?? 0,
-    textures: s.gl?.info.memory.textures ?? 0,
-    programs: s.gl?.info.programs?.length ?? 0,
-  },
-  infos: s.infos ?? { version: "", renderer: "", vendor: "" },
+  vramSource: s.estimatedMemory.source,
+  // Đọc snapshot đã chuẩn hoá thay vì chọc vào `s.gl.info`: WebGLRenderer và
+  // WebGPURenderer có shape `info` khác nhau (vd draw call của frame là
+  // `render.calls` bên này nhưng `render.drawCalls` bên kia).
+  gl: s.glStats,
+  infos: s.infos,
 });
 
 /**

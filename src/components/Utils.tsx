@@ -36,6 +36,7 @@ export const colors = {
   fps: "#00FFFF",
   cpu: "#00FF00",
   gpu: "#FD007F",
+  compute: "#B47CFF",
   mem: "#FFD000",
   vram: "#FF8C00",
 };
@@ -45,6 +46,7 @@ export const colorsGraph = {
   fps: "#00FFFF",
   cpu: "#00FF00",
   gpu: "#FD007F",
+  compute: "#B47CFF",
   memory: "#FFD000",
   vram: "#FF8C00",
 };

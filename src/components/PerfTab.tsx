@@ -1,6 +1,7 @@
 import { type FC, useRef, useState } from "react";
 
 import { useEvent } from "../events/react";
+import { useHasCompute } from "../hooks/useHasCompute";
 import { usePerf } from "../store";
 import type { PerfPropsGui } from "../types";
 import s from "../style/tab.module.css";
@@ -65,6 +66,9 @@ export const PerfTab: FC<PerfPropsGui> = (props) => {
     graphType,
     position,
   } = props;
+
+  // Chỉ hiện khi scene thực sự có compute dispatch — xem useHasCompute.
+  const hasCompute = useHasCompute();
 
   const [tab, setTab] = useState<"perf" | "res">("perf");
   const [showSettings, setShowSettings] = useState(false);
@@ -251,6 +255,33 @@ export const PerfTab: FC<PerfPropsGui> = (props) => {
                       <span className={s.unit}>ms</span>
                     </div>
                   </div>
+
+                  {hasCompute && (
+                    <div className={`${s.gridRow} ${s.cols2}`}>
+                      <div className={s.cell}>
+                        <span
+                          className={s.label}
+                          style={{ color: colorsGraph.compute }}
+                        >
+                          COMPUTE
+                        </span>
+                        <span className={s.val}>
+                          <MetricValue
+                            type="log"
+                            field="gpuCompute"
+                            decimal={2}
+                          />
+                        </span>
+                        <span className={s.unit}>ms</span>
+                      </div>
+                      <div className={s.cell}>
+                        <span className={s.label}>DISPATCH</span>
+                        <span className={s.val}>
+                          <MetricValue type="gl" field="computeCalls" />
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className={`${s.gridRow} ${s.cols2}`}>
                     <div className={s.cell}>
