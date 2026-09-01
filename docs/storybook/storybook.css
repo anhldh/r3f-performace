@@ -429,6 +429,173 @@ body {
   background: rgba(85, 230, 187, 0.1);
 }
 
+.backend-badge {
+  position: absolute;
+  z-index: 3;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(5, 9, 15, 0.86);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+.backend-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6e8298;
+}
+
+.backend-badge.is-webgpu .backend-dot {
+  background: #55e6bb;
+  box-shadow: 0 0 0 4px rgba(85, 230, 187, 0.16);
+}
+
+.backend-badge.is-webgl2 .backend-dot {
+  background: #ffb454;
+  box-shadow: 0 0 0 4px rgba(255, 180, 84, 0.16);
+}
+
+.backend-body strong {
+  display: block;
+  color: #f6fbff;
+  font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.backend-sub {
+  display: block;
+  margin-top: 2px;
+  color: #66788e;
+  font: 500 9px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+}
+
+.backend-facts {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding-left: 13px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.backend-facts dt {
+  color: #66788e;
+  font: 700 8px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.backend-facts dd {
+  margin: 2px 0 0;
+  color: #f6fbff;
+  font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.backend-facts dd small {
+  margin-left: 3px;
+  color: #6e8298;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.open-standalone {
+  position: absolute;
+  z-index: 3;
+  right: 20px;
+  bottom: 22px;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #d7e1ee;
+  background: rgba(5, 9, 15, 0.86);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(16px);
+  font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.open-standalone:hover {
+  border-color: rgba(85, 230, 187, 0.5);
+  color: #fff;
+  background: rgba(85, 230, 187, 0.1);
+}
+
+.scene-toolbar {
+  position: absolute;
+  z-index: 3;
+  bottom: 22px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px 7px 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(5, 9, 15, 0.86);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+}
+
+.scene-toolbar-label {
+  margin-right: 4px;
+  color: #66788e;
+  font: 700 9px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.scene-toolbar button {
+  display: grid;
+  appearance: none;
+  padding: 7px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #d7e1ee;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  font: 600 12px/1.3 ui-sans-serif, system-ui, sans-serif;
+  gap: 2px;
+  justify-items: center;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.scene-toolbar button:hover {
+  border-color: rgba(85, 230, 187, 0.4);
+  color: #fff;
+  background: rgba(85, 230, 187, 0.08);
+}
+
+.scene-toolbar button.is-active {
+  border-color: rgba(85, 230, 187, 0.6);
+  color: #061019;
+  background: linear-gradient(180deg, #6ff0c8, #35c79c);
+}
+
+.scene-toolbar button small {
+  color: #6e8298;
+  font: 500 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.scene-toolbar button.is-active small {
+  color: rgba(6, 16, 25, 0.62);
+}
+
 .loading-card {
   color: #8fa2b8;
   font: 600 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -445,6 +612,19 @@ body {
   }
 
   .demo-caption {
+    display: none;
+  }
+
+  .scene-toolbar {
+    bottom: 14px;
+    padding: 6px;
+  }
+
+  .scene-toolbar-label {
+    display: none;
+  }
+
+  .open-standalone {
     display: none;
   }
 

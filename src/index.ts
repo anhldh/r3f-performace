@@ -15,6 +15,22 @@ export { PerfHeadless } from "./components/PerfHeadless";
  */
 export { usePerfData, type PerfData } from "./hooks/usePerfData";
 
+// ── Backend (WebGL / WebGPU) ─────────────────────────────────
+/**
+ * r3f-monitor tự nhận renderer đang chạy — WebGLRenderer hay WebGPURenderer —
+ * và chọn đường đo tương ứng. Không phải cấu hình gì thêm.
+ *
+ * Lưu ý `backend` khác `api`: WebGPURenderer của three có cả backend WebGL2 và
+ * tự rơi về đó khi máy không có `navigator.gpu`, nên `backend: "webgpu"` vẫn có
+ * thể đi kèm `api: "webgl2"`.
+ */
+export type {
+  BackendApi,
+  BackendKind,
+  FrameStats,
+  MemorySource,
+} from "./backends/types";
+
 // ── Adaptive quality ─────────────────────────────────────────
 /**
  * Điều chỉnh `factor` (0-1) để giảm/tăng chất lượng theo FPS.

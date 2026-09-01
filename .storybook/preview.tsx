@@ -1,20 +1,20 @@
-import type { Preview } from '@storybook/react-vite'
-import '../docs/storybook/storybook.css'
+import type { Preview } from "@storybook/react-vite";
+import "../docs/storybook/storybook.css";
 
 const preview: Preview = {
   parameters: {
     docs: {
-      defaultName: 'Docs',
+      defaultName: "Docs",
     },
     options: {
       storySort: {
-        order: ['R3F Monitor', 'Components', 'Guides'],
+        order: ["R3F Monitor", "Components", "Guides", "WebGPU"],
       },
     },
     controls: {
       matchers: {
-       color: /(background|color)$/i,
-       date: /Date$/i,
+        color: /(background|color)$/i,
+        date: /Date$/i,
       },
     },
   },

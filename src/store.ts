@@ -2,12 +2,26 @@ import { createWithEqualityFn } from "zustand/traditional";
 import { shallow } from "zustand/shallow";
 import * as THREE from "three";
 
+import type { AnyRenderer } from "./backends/detect";
+import type {
+  BackendApi,
+  BackendKind,
+  FrameStats,
+  MemorySource,
+} from "./backends/types";
+
 // Type memory
 export type EstimatedMemory = {
   vram: number;
   tex: number;
   geo: number;
   ram: number;
+  /**
+   * `measured` khi renderer theo dõi byte thật (WebGPU), `estimated` khi phải
+   * duyệt scene mà đoán (WebGL). Cùng một scene, hai backend cho hai con số —
+   * field này để UI nói rõ thay vì để người dùng tưởng là bug.
+   */
+  source: MemorySource;
 };
 
 type drawCount = {
@@ -35,6 +49,8 @@ type Logger = {
   i: number;
   maxMemory: number;
   gpu: number;
+  /** ms của compute pass. WebGPU only — WebGL luôn 0. */
+  gpuCompute: number;
   mem: number;
   cpu: number;
   fps: number;
@@ -49,6 +65,9 @@ type GLLogger = {
   lines: number;
   counts: number;
 };
+
+/** Thống kê frame đã chuẩn hoá giữa hai backend, cập nhật theo `logsPerSecond`. */
+export type GlStats = FrameStats;
 
 export type State = {
   getReport: () => any;
@@ -79,8 +98,16 @@ export type State = {
     version: string;
     renderer: string;
     vendor: string;
+    backend: BackendKind;
+    api: BackendApi;
   };
-  gl: THREE.WebGLRenderer | undefined;
+  glStats: GlStats;
+  /**
+   * Renderer thật đang chạy. Có thể là WebGLRenderer HOẶC WebGPURenderer —
+   * đọc số liệu qua `glStats` thay vì chọc thẳng vào đây, vì hai renderer có
+   * shape `info` khác nhau.
+   */
+  gl: AnyRenderer | undefined;
   scene: THREE.Scene | undefined;
   programs: ProgramsPerfs;
   objectWithMaterials: THREE.Mesh[] | null;
@@ -142,6 +169,24 @@ export const usePerfImpl = createWithEqualityFn<State>((_set, get): any => {
       tex: 0,
       geo: 0,
       ram: 0,
+      source: "estimated" as MemorySource,
+    },
+    glStats: {
+      calls: 0,
+      triangles: 0,
+      points: 0,
+      lines: 0,
+      geometries: 0,
+      textures: 0,
+      programs: 0,
+      computeCalls: 0,
+    },
+    infos: {
+      version: "",
+      renderer: "",
+      vendor: "",
+      backend: "webgl" as BackendKind,
+      api: "webgl2" as BackendApi,
     },
     // -------------------------------------
     accumulated: {
@@ -155,6 +200,7 @@ export const usePerfImpl = createWithEqualityFn<State>((_set, get): any => {
       },
       log: {
         gpu: 0,
+        gpuCompute: 0,
         cpu: 0,
         mem: 0,
         fps: 0,
@@ -169,6 +215,7 @@ export const usePerfImpl = createWithEqualityFn<State>((_set, get): any => {
         },
         log: {
           gpu: 0,
+          gpuCompute: 0,
           cpu: 0,
           mem: 0,
           fps: 0,

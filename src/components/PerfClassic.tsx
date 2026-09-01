@@ -1,6 +1,7 @@
 import { type FC, useRef, useState } from "react";
 
 import { useEvent } from "../events/react";
+import { useHasCompute } from "../hooks/useHasCompute";
 import { setPerf, usePerf } from "../store";
 import type { PerfPropsGui } from "../types";
 import s from "../style/classic.module.css";
@@ -15,6 +16,8 @@ import { colorsGraph } from "./Utils";
 // --- TYPES ---
 type LogData = {
   gpu: number;
+  /** ms của compute pass. WebGPU only — WebGL luôn 0. */
+  gpuCompute: number;
   cpu: number;
   mem: number;
   fps: number;
@@ -30,6 +33,8 @@ type GLData = {
   textures: number;
   programs: number;
   matrices: number;
+  /** Số compute dispatch trong frame. WebGL luôn 0. */
+  computeCalls: number;
   [key: string]: number;
 };
 
@@ -123,6 +128,9 @@ export const PerfClassic: FC<PerfPropsGui> = (props) => {
   const tab = usePerf((s) => s.tab);
   const gl = usePerf((s) => s.gl);
 
+  // Chỉ hiện khi scene thực sự có compute dispatch — xem useHasCompute.
+  const hasCompute = useHasCompute();
+
   // FPS overclock
   const fpsRef = useRef<HTMLSpanElement>(null);
 
@@ -173,6 +181,12 @@ export const PerfClassic: FC<PerfPropsGui> = (props) => {
                 <LogValue metric="gpu" decimal={2} suffix=" ms" />
               </MetricItem>
 
+              {hasCompute && (
+                <MetricItem label="COMPUTE" color={colorsGraph.compute}>
+                  <LogValue metric="gpuCompute" decimal={2} suffix=" ms" />
+                </MetricItem>
+              )}
+
               <MetricItem label="MEMORY" color={colorsGraph.memory}>
                 <MemoryValue type="ram" />
               </MetricItem>
@@ -207,6 +221,11 @@ export const PerfClassic: FC<PerfPropsGui> = (props) => {
                   <MetricItem label="Shaders">
                     <GLValue metric="programs" />
                   </MetricItem>
+                  {hasCompute && (
+                    <MetricItem label="Dispatch">
+                      <GLValue metric="computeCalls" />
+                    </MetricItem>
+                  )}
                   <MetricItem label="Triangles">
                     <GLValue metric="triangles" />
                   </MetricItem>

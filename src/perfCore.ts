@@ -1,12 +1,12 @@
 import { addAfterEffect, addEffect, addTail } from "@react-three/fiber";
 import * as THREE from "three";
 
-import { GLPerf } from "./internal";
-import { countGeoDrawCalls } from "./helpers/countGeoDrawCalls";
-import { getPerf, type ProgramsPerfs, setPerf } from "./store";
+import { PerfSampler, type SampleChart, type SampleLog } from "./sampler";
+import { createBackend, type AnyRenderer } from "./backends/detect";
+import type { PerfBackend } from "./backends/types";
+import { getPerf, setPerf } from "./store";
 import type { PerfProps } from "./types";
 import { emitEvent } from "./events/vanilla";
-import { estimateMemory } from "./helpers/estimateMemory";
 
 const updateMatrixWorldTemp = THREE.Object3D.prototype.updateMatrixWorld;
 const updateWorldMatrixTemp = THREE.Object3D.prototype.updateWorldMatrix;
@@ -18,56 +18,23 @@ const maxLog = ["gpu", "cpu", "mem", "fps"] as const;
 export const matriceWorldCount = { value: 0 };
 export const matriceCount = { value: 0 };
 
-const isUUID = (uuid: string) =>
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
-    uuid,
-  );
-
-const addMuiPerfID = (
-  material: THREE.Material,
-  currentObjectWithMaterials: any,
-) => {
-  material.defines ||= {};
-  if (!material.defines.muiPerf) {
-    material.defines = Object.assign(material.defines || {}, {
-      muiPerf: material.uuid,
-    });
-    material.needsUpdate = true;
-  }
-
-  const uuid = material.uuid;
-  if (!currentObjectWithMaterials[uuid]) {
-    currentObjectWithMaterials[uuid] = { meshes: {}, material };
-  }
-  material.needsUpdate = false;
-  return uuid;
-};
-
-type Chart = {
-  data: { [index: string]: number[] };
-  id: number;
-  circularId: number;
-};
-
-const getMUIIndex = (muid: string) => muid === "muiPerf";
-
 /**
  * Core đo hiệu năng — singleton ref-counted, không dính React.
  *
- * `acquirePerf()` lần đầu sẽ khởi tạo GLPerf + hook vào render loop;
- * các lần acquire sau chỉ tăng biến đếm (core không thuộc về consumer nào).
- * Hàm release trả về giảm đếm; về 0 thì dispose sạch. Nhờ đó mount
+ * `acquirePerf()` lần đầu sẽ chọn backend theo renderer đang chạy (WebGLRenderer
+ * hay WebGPURenderer) rồi hook vào render loop; các lần acquire sau chỉ tăng biến
+ * đếm. Hàm release trả về giảm đếm; về 0 thì dispose sạch. Nhờ đó mount
  * <PerfHeadless /> lẫn <PerfMonitor /> cùng lúc vẫn chỉ có MỘT hệ đo.
  */
 let refCount = 0;
 let current: {
-  gl: THREE.WebGLRenderer;
+  gl: AnyRenderer;
   options: PerfProps;
   dispose: () => void;
 } | null = null;
 
 export function acquirePerf(
-  gl: THREE.WebGLRenderer,
+  gl: AnyRenderer,
   scene: THREE.Scene,
   options: PerfProps = {},
 ): () => void {
@@ -105,32 +72,43 @@ export function acquirePerf(
   };
 }
 
-/** Khởi tạo toàn bộ hệ đo. Trả về hàm dispose. (Port 1:1 từ PerfHeadless cũ) */
+/** Khởi tạo toàn bộ hệ đo. Trả về hàm dispose. */
 function createCore(
-  gl: THREE.WebGLRenderer,
+  gl: AnyRenderer,
   scene: THREE.Scene,
   { logsPerSecond, chart, deepAnalyze, matrixUpdate }: PerfProps,
 ): () => void {
   setPerf({ gl, scene });
 
+  const backend: PerfBackend = createBackend(gl, scene);
+  backend.start();
+
   const memoryUpdateRate = 1000;
   let lastMemoryUpdate = 0;
+  let disposed = false;
 
-  const PerfLib = new GLPerf({
-    trackGPU: true,
+  if (deepAnalyze && !backend.supportsProgramAnalysis) {
+    console.warn(
+      "[r3f-monitor] deepAnalyze chưa hỗ trợ WebGPURenderer: node material biên dịch " +
+        "thẳng ra pipeline WGSL, không có danh sách program để ghép ngược về material. " +
+        "Các số liệu còn lại vẫn chạy bình thường.",
+    );
+  }
+
+  const sampler = new PerfSampler({
     chartLen: chart ? chart.length : 120,
     chartHz: chart ? chart.hz : 60,
     logsPerSecond: logsPerSecond || 10,
-    gl: gl.getContext(),
 
-    chartLogger: (chart: Chart) => {
+    chartLogger: (chart: SampleChart) => {
       setPerf({ chart });
     },
 
-    paramLogger: (logger: any) => {
+    paramLogger: (logger: SampleLog) => {
       const log = {
         maxMemory: logger.maxMemory,
         gpu: logger.gpu,
+        gpuCompute: logger.gpuCompute,
         cpu: logger.cpu,
         mem: logger.mem,
         fps: logger.fps,
@@ -141,23 +119,24 @@ function createCore(
 
       setPerf({ log });
 
+      const glStats = backend.readFrameStats();
       const { accumulated }: any = getPerf();
-      const glRender: any = gl.info.render;
 
       accumulated.totalFrames++;
-      accumulated.gl.calls += glRender.calls;
-      accumulated.gl.triangles += glRender.triangles;
-      accumulated.gl.points += glRender.points;
-      accumulated.gl.lines += glRender.lines;
+      accumulated.gl.calls += glStats.calls;
+      accumulated.gl.triangles += glStats.triangles;
+      accumulated.gl.points += glStats.points;
+      accumulated.gl.lines += glStats.lines;
 
       accumulated.log.gpu += logger.gpu;
+      accumulated.log.gpuCompute += logger.gpuCompute;
       accumulated.log.cpu += logger.cpu;
       accumulated.log.mem += logger.mem;
       accumulated.log.fps += logger.fps;
 
       for (let i = 0; i < maxGl.length; i++) {
         const key = maxGl[i];
-        const value = glRender[key];
+        const value = glStats[key];
         if (value > accumulated.max.gl[key]) accumulated.max.gl[key] = value;
       }
 
@@ -167,184 +146,103 @@ function createCore(
         if (value > accumulated.max.log[key]) accumulated.max.log[key] = value;
       }
 
-      setPerf({ accumulated });
+      setPerf({ accumulated, glStats });
 
-      const glInfo = {
-        calls: gl.info.render.calls,
-        triangles: gl.info.render.triangles,
-        points: gl.info.render.points,
-        lines: gl.info.render.lines,
-        geometries: gl.info.memory.geometries,
-        textures: gl.info.memory.textures,
-        programs: gl.info.programs?.length || 0,
-
-        matrices: matriceCount.value + matriceWorldCount.value,
-      };
-
-      emitEvent("log", [log, glInfo]);
+      emitEvent("log", [
+        log,
+        { ...glStats, matrices: matriceCount.value + matriceWorldCount.value },
+      ]);
     },
   });
 
-  // Infos (vendor/renderer)
-  const ctx = gl.getContext();
-  let glRenderer: string | null = null;
-  let glVendor: string | null = null;
+  // Vendor/renderer: async trên WebGPU (phải hỏi adapter), nên chỉ hiển thị nên
+  // về trễ một nhịp không sao — đổi lại acquirePerf giữ được chữ ký đồng bộ và
+  // hợp đồng cleanup của useEffect không phải đụng tới.
+  setPerf({ startTime: window.performance.now() });
+  backend
+    .readInfos()
+    .then((infos) => {
+      if (!disposed) setPerf({ infos });
+    })
+    .catch(() => {});
 
-  const rendererInfo: any = ctx.getExtension("WEBGL_debug_renderer_info");
-  const glVersion = ctx.getParameter(ctx.VERSION);
+  // optional: matrix update counting
+  if (matrixUpdate) {
+    THREE.Object3D.prototype.updateMatrixWorld = function (
+      ...args: Parameters<typeof updateMatrixWorldTemp>
+    ) {
+      if (this.matrixWorldNeedsUpdate || args[0]) matriceWorldCount.value++;
+      return updateMatrixWorldTemp.apply(this, args);
+    };
 
-  if (rendererInfo) {
-    glRenderer = ctx.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL);
-    glVendor = ctx.getParameter(rendererInfo.UNMASKED_VENDOR_WEBGL);
+    THREE.Object3D.prototype.updateWorldMatrix = function (
+      ...args: Parameters<typeof updateWorldMatrixTemp>
+    ) {
+      matriceWorldCount.value++;
+      return updateWorldMatrixTemp.apply(this, args);
+    };
+
+    THREE.Object3D.prototype.updateMatrix = function (
+      ...args: Parameters<typeof updateMatrixTemp>
+    ) {
+      matriceCount.value++;
+      return updateMatrixTemp.apply(this, args);
+    };
   }
 
-  glVendor ||= "Unknown vendor";
-  glRenderer ||= ctx.getParameter(ctx.RENDERER);
+  // PRE frame: reset stats + mở đo CPU/GPU
+  const unsubEffect = addEffect(() => {
+    if (getPerf().paused) setPerf({ paused: false });
 
-  setPerf({
-    startTime: window.performance.now(),
-    infos: {
-      version: glVersion,
-      renderer: glRenderer as string,
-      vendor: glVendor,
-    },
+    sampler.begin();
+    backend.beginFrame();
+
+    matriceWorldCount.value = 0;
+    matriceCount.value = 0;
   });
 
-  // main hooks + optional deep analyze
-  let unsubEffect: (() => void) | undefined;
-  let unsubAfter: (() => void) | undefined;
+  // AFTER frame: đóng đo + chốt frame + deepAnalyze
+  const unsubAfter = addAfterEffect(() => {
+    backend.endFrame();
+    sampler.end();
 
-  if (gl.info) {
-    gl.info.autoReset = false;
-
-    // optional: matrix update counting
-    if (matrixUpdate) {
-      THREE.Object3D.prototype.updateMatrixWorld = function (
-        ...args: Parameters<typeof updateMatrixWorldTemp>
-      ) {
-        if (this.matrixWorldNeedsUpdate || args[0]) matriceWorldCount.value++;
-        return updateMatrixWorldTemp.apply(this, args);
-      };
-
-      THREE.Object3D.prototype.updateWorldMatrix = function (
-        ...args: Parameters<typeof updateWorldMatrixTemp>
-      ) {
-        matriceWorldCount.value++;
-        return updateWorldMatrixTemp.apply(this, args);
-      };
-
-      THREE.Object3D.prototype.updateMatrix = function (
-        ...args: Parameters<typeof updateMatrixTemp>
-      ) {
-        matriceCount.value++;
-        return updateMatrixTemp.apply(this, args);
-      };
+    if (!sampler.paused) {
+      const gpu = backend.readGpuTiming();
+      sampler.nextFrame(window.performance.now(), gpu.render, gpu.compute);
     }
 
-    // PRE frame: reset stats + start CPU mark + GPU begin
-    unsubEffect = addEffect(() => {
-      if (getPerf().paused) setPerf({ paused: false });
+    const now = window.performance.now();
 
-      // GPU begin + CPU begin (statgl: performance.now())
-      PerfLib.begin("profiler");
+    if (now - lastMemoryUpdate > memoryUpdateRate) {
+      lastMemoryUpdate = now;
 
-      matriceWorldCount.value = 0;
-      matriceCount.value = 0;
+      const memory = backend.readMemory();
 
-      gl.info.reset();
-    });
-
-    // AFTER frame: GPU end + nextFrame + deepAnalyze
-    unsubAfter = addAfterEffect(() => {
-      // end GPU for the frame
-      PerfLib.end("profiler");
-
-      if (!PerfLib.paused) {
-        PerfLib.nextFrame(window.performance.now());
-      }
-
-      const now = window.performance.now();
-
-      // Count Vram
-      if (now - lastMemoryUpdate > memoryUpdateRate) {
-        lastMemoryUpdate = now;
-
-        // Estimate VRAM
-        const vramStats = estimateMemory(scene);
-
-        // Memory Ram
-        const jsMem = (PerfLib as any).currentMem || 0;
-
-        // Save store
-        setPerf({
-          estimatedMemory: {
-            vram: vramStats.total / 1024 / 1024, // MB
-            tex: vramStats.texture / 1024 / 1024,
-            geo: vramStats.geometry / 1024 / 1024,
-            ram: jsMem, // MB
-          },
-        });
-      }
-      // ----------------------------------
-
-      if (!deepAnalyze) return;
-
-      const currentObjectWithMaterials: any = {};
-      const programs: ProgramsPerfs = new Map();
-
-      scene.traverse((object: any) => {
-        if (object instanceof THREE.Mesh || object instanceof THREE.Points) {
-          if (!object.material) return;
-
-          let uuid = object.material.uuid;
-          const isTroika =
-            Array.isArray(object.material) && object.material.length > 1;
-
-          uuid = isTroika
-            ? addMuiPerfID(object.material[1], currentObjectWithMaterials)
-            : addMuiPerfID(object.material, currentObjectWithMaterials);
-
-          currentObjectWithMaterials[uuid].meshes[object.uuid] = object;
-        }
+      setPerf({
+        estimatedMemory: {
+          vram: memory.vram,
+          tex: memory.tex,
+          geo: memory.geo,
+          ram: sampler.currentMem, // MB
+          source: memory.source,
+        },
       });
+    }
 
-      gl?.info?.programs?.forEach((program: any) => {
-        const cacheKeySplited = program.cacheKey.split(",");
-        const muiPerfTracker =
-          cacheKeySplited[cacheKeySplited.findIndex(getMUIIndex) + 1];
+    if (!deepAnalyze || !backend.supportsProgramAnalysis) return;
 
-        if (
-          isUUID(muiPerfTracker) &&
-          currentObjectWithMaterials[muiPerfTracker]
-        ) {
-          const { material, meshes } =
-            currentObjectWithMaterials[muiPerfTracker];
-
-          programs.set(muiPerfTracker, {
-            program,
-            material,
-            meshes,
-            drawCounts: { total: 0, type: "triangle", data: [] },
-            expand: false,
-            visible: true,
-          });
-        }
+    const programs = backend.analyzePrograms();
+    if (programs) {
+      setPerf({
+        programs,
+        triggerProgramsUpdate: getPerf().triggerProgramsUpdate + 1,
       });
-
-      // NOTE: triggerProgramsUpdate++
-      if (programs.size !== getPerf().programs.size) {
-        countGeoDrawCalls(programs);
-        setPerf({
-          programs,
-          triggerProgramsUpdate: getPerf().triggerProgramsUpdate + 1,
-        });
-      }
-    });
-  }
+    }
+  });
 
   // tail: when r3f stops rendering
   const unsubTail = addTail(() => {
-    PerfLib.paused = true;
+    sampler.paused = true;
     matriceCount.value = 0;
     matriceWorldCount.value = 0;
 
@@ -353,6 +251,7 @@ function createCore(
       log: {
         maxMemory: 0,
         gpu: 0,
+        gpuCompute: 0,
         mem: 0,
         cpu: 0,
         fps: 0,
@@ -364,8 +263,10 @@ function createCore(
   });
 
   return () => {
-    // dispose GPU query state
-    PerfLib.dispose?.();
+    disposed = true;
+
+    backend.dispose();
+    sampler.dispose();
 
     // restore matrix prototypes
     if (matrixUpdate) {
@@ -374,8 +275,8 @@ function createCore(
       THREE.Object3D.prototype.updateMatrix = updateMatrixTemp;
     }
 
-    unsubEffect?.();
-    unsubAfter?.();
+    unsubEffect();
+    unsubAfter();
     unsubTail();
   };
 }
