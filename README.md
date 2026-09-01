@@ -8,6 +8,8 @@ An advanced, easy-to-use performance monitoring tool for [@react-three/fiber](ht
 
 Add the <code>&lt;PerfMonitor /&gt;</code> component anywhere in your R3F Canvas — or go **headless** and bring your own UI.
 
+> **New in v3 — WebGPU.** Works with three's `WebGPURenderer` as well as the classic `WebGLRenderer`. The renderer is detected at runtime, so there is nothing to configure and **existing WebGL projects need no changes.**
+
 ## Display Modes
 
 ### 🗂 Tab Display (Default)
@@ -51,12 +53,13 @@ Live example:
 
 ## 🚀 Key Features
 
+- **WebGPU + WebGL (v3):** One component for both. The measurement path is chosen from the renderer at runtime — including `WebGPURenderer`'s own WebGL 2 fallback. Adds a **GPU compute** metric and **exact** (rather than estimated) VRAM on WebGPU.
 - **Comprehensive Metrics:** Monitor FPS, CPU/GPU render times, and JS Heap Memory.
 - **Accurate Measurement Engine (v2):** FPS via a real 1-second sliding window, CPU via `performance.now()` accumulation, and GPU via a WebGL2 timer-query queue (`EXT_disjoint_timer_query_webgl2`) reporting true milliseconds.
 - **Headless Mode (v2.1):** Run the measurement engine without the built-in UI. Read live metrics with `usePerfData()`.
 - **Adaptive Quality (v2.2):** `<PerfAdaptive />` automatically raises/lowers a quality `factor` (0–1) based on sustained FPS — drei `<PerformanceMonitor>`-compatible API, plus real GPU/CPU times to tell GPU-bound from CPU-bound. Pair with `useGpuTier()` for a per-device starting quality.
-- **VRAM Estimation:** Get an estimated breakdown of your GPU memory usage (Textures and Geometries).
-- **Deep Analysis:** Inspect individual WebGL programs, toggle visibility, and track matrix updates.
+- **VRAM:** Breakdown of GPU memory (Textures and Geometries) — estimated from the scene on WebGL, measured in real bytes on WebGPU.
+- **Deep Analysis:** Inspect individual WebGL programs, toggle visibility, and track matrix updates. _(Program inspection is WebGL-only; see [WebGPU](#-webgpu).)_
 - **Flexible UI:** Choose between graphical visualizations, detailed lists, or a minimal condensed view.
 
 > **Note:** Overclock mode was **removed in v2**. It still exists in `1.2.0` and earlier — pin to `1.2.0` if you rely on it.
@@ -121,9 +124,65 @@ Starting with **v2**, the FPS / CPU / GPU values come from a reworked measuremen
 
 - **FPS** — counted over a real 1-second sliding window and reported as a continuous value (smoothed with a light EMA), so the readout stays stable instead of flickering ±1.
 - **CPU** — wall-clock time of the render phase, accumulated per frame via `performance.now()`.
-- **GPU** — measured with a WebGL2 timer-query queue (`EXT_disjoint_timer_query_webgl2`). Results are reported in **true milliseconds** (no scaling fudge). WebGL2 only.
+- **GPU** — GPU time for the render pass, in **true milliseconds** (no scaling fudge). The mechanism depends on the renderer: a WebGL2 timer-query queue (`EXT_disjoint_timer_query_webgl2`) on `WebGLRenderer`, three's timestamp queries on `WebGPURenderer`. Both are read back asynchronously, so the value trails the current frame by a frame or two.
 
 The bar graph (`graphType: "bar"`) scrolls left as new samples arrive and uses a fixed (high-water) vertical scale, with a gradient fill per metric.
+
+---
+
+## ⚡ WebGPU
+
+> Added in **v3**
+
+Mount `<PerfMonitor />` (or `<PerfHeadless />`) exactly as you always have — the
+renderer is detected at runtime:
+
+```tsx
+import { Canvas } from "@react-three/fiber";
+import { WebGPURenderer } from "three/webgpu";
+import { PerfMonitor } from "r3f-monitor";
+
+<Canvas
+  gl={async (props) => {
+    const renderer = new WebGPURenderer({
+      canvas: props.canvas as HTMLCanvasElement,
+      antialias: props.antialias,
+    });
+    await renderer.init();
+    return renderer;
+  }}
+>
+  <PerfMonitor />
+  {/* <YourScene /> */}
+</Canvas>;
+```
+
+`WebGPURenderer` falls back to its own WebGL 2 backend when `navigator.gpu` is
+missing. That is still the WebGPU measurement path — `infos.backend` reports the
+renderer class (`"webgpu"`), `infos.api` reports the GPU API actually in use
+(`"webgpu"` or `"webgl2"`).
+
+### What differs
+
+| Metric | `WebGLRenderer` | `WebGPURenderer` |
+| --- | --- | --- |
+| **VRAM** | **estimated** — walks the scene and sums buffer sizes, guessing texture memory from dimensions | **measured** — three tracks real allocated bytes, including render targets and uniform buffers |
+| **COMPUTE** | — | ms spent in compute passes, plus a **DISPATCH** count |
+| **Shaders** | an enumerable list of programs (this is what `deepAnalyze` inspects) | a count only — node materials compile straight to WGSL pipelines |
+
+Because the two renderers measure *different things*, the VRAM figures will not
+match for the same scene. `usePerfData().vramSource` tells you which you are
+looking at.
+
+The **COMPUTE** row only appears once the scene actually dispatches compute — an
+ordinary scene never does, so it stays hidden. `GPU` covers the render pass
+only: **total GPU time is `GPU + COMPUTE`.**
+
+**`deepAnalyze` is WebGL-only.** On WebGPU it warns once and is skipped; every
+other metric keeps working.
+
+GPU timing needs three's timestamp queries, which r3f-monitor turns on itself —
+you do **not** need to pass `trackTimestamp` when creating the renderer.
 
 ---
 
@@ -155,22 +214,26 @@ const {
   fps,
   cpu,
   gpu,
+  gpuCompute,
   mem,
   vram, // the "hot" numbers
-  gl, // { calls, triangles, points, lines, geometries, textures, programs }
-  infos, // { version, renderer, vendor }
+  vramSource, // "measured" | "estimated"
+  gl, // { calls, triangles, points, lines, geometries, textures, programs, computeCalls }
+  infos, // { version, renderer, vendor, backend, api }
 } = usePerfData();
 ```
 
-| Field   | Unit     | Meaning                                    |
-| ------- | -------- | ------------------------------------------ |
-| `fps`   | frames/s | frames per second                          |
-| `cpu`   | ms       | CPU time per frame                         |
-| `gpu`   | ms       | GPU time per frame (WebGL2)                |
-| `mem`   | MB       | JS heap in use                             |
-| `vram`  | MB       | estimated VRAM from the scene              |
-| `gl`    | —        | render stats for the latest frame          |
-| `infos` | —        | renderer/vendor (constant for the session) |
+| Field        | Unit     | Meaning                                                      |
+| ------------ | -------- | ------------------------------------------------------------ |
+| `fps`        | frames/s | frames per second                                            |
+| `cpu`        | ms       | CPU time per frame                                           |
+| `gpu`        | ms       | GPU time per frame, **render pass only**                     |
+| `gpuCompute` | ms       | GPU time in compute passes — WebGPU only, `0` on WebGL        |
+| `mem`        | MB       | JS heap in use                                               |
+| `vram`       | MB       | GPU memory — see `vramSource`                                 |
+| `vramSource` | —        | `"measured"` (WebGPU, real bytes) or `"estimated"` (WebGL)    |
+| `gl`         | —        | render stats for the latest frame                            |
+| `infos`      | —        | renderer/vendor/`backend`/`api` (constant for the session)    |
 
 Or pass a **selector** to read only the field you need — the component only
 re-renders when that field changes (avoids wasted re-renders when displaying a
